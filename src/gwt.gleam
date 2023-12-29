@@ -80,4 +80,29 @@ pub fn set_jwt_id(jwt: Jwt, to jti: String) -> Jwt {
 
   Jwt(header, new_body)
 }
-///
+
+pub fn to_url_encoded_string(jwt: Jwt) -> String {
+  let Jwt(header, body) = jwt
+
+  let header_string =
+    header
+    |> dict.fold([], fn(acc, key, value) { [#(key, value), ..acc] })
+    |> json.object()
+    |> json.to_string()
+    |> base_64_url_encode_()
+
+  let body_string =
+    body
+    |> dict.fold([], fn(acc, key, value) { [#(key, value), ..acc] })
+    |> json.object()
+    |> json.to_string()
+    |> base_64_url_encode_()
+
+  header_string <> "." <> body_string
+}
+
+// UTILITIES -------------------------------------------------------------------
+
+@external(erlang, "", "")
+@external(javascript, "./ffi.mjs", "encodeUrlSafe")
+fn base_64_url_encode_(string: String) -> String
