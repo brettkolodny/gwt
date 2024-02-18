@@ -1,12 +1,12 @@
 name = "gwt"
-version = "0.1.0"
+version = "0.2.0"
 
 description = "A JWT library written in Gleam"
 
 licences = ["Apache-2.0"]
 
 [dependencies]
-gleam_stdlib = "~> 0.34"
+gleam_stdlib = "~> 0.35.1"
 gleam_json = "~> 1.0"
 gleam_crypto = "~> 1.3"
 
