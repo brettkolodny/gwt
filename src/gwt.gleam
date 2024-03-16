@@ -1,14 +1,14 @@
 // IMPORTS ---------------------------------------------------------------------
 
 import gleam/bit_array
+import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/dynamic.{type Dynamic}
 import gleam/json.{type Json}
-import gleam/string
 import gleam/list
+import gleam/option.{type Option, None, Some}
 import gleam/result
-import gleam/option
-import gleam/crypto
+import gleam/string
 import birl
 
 // TYPES -----------------------------------------------------------------------
@@ -52,6 +52,8 @@ pub type JwtDecodeError {
   NoAlg
   ///
   InvalidAlg
+  ///
+  UnsupportedSigningAlgorithm
 }
 
 pub type Algorithm {
@@ -113,7 +115,7 @@ pub fn from_signed_string(
         False -> Error(InvalidSignature)
       }
     }
-    _ -> panic as "Unimplemented signature algorithm"
+    _ -> Error(UnsupportedSigningAlgorithm)
   }
 }
 
@@ -334,7 +336,7 @@ fn get_signature(data: String, algorithm: Algorithm, secret: String) -> String {
 
 fn parts(
   jwt_string: String,
-) -> Result(#(Header, Payload, option.Option(String)), JwtDecodeError) {
+) -> Result(#(Header, Payload, Option(String)), JwtDecodeError) {
   let jwt_parts = string.split(jwt_string, ".")
 
   let signature =
@@ -397,13 +399,13 @@ fn ensure_valid_expiration(payload: Payload) -> Result(Nil, JwtDecodeError) {
   }
   use exp <- result.try(exp)
   let exp = case exp {
-    -1 -> option.None
-    v -> option.Some(v)
+    -1 -> None
+    v -> Some(v)
   }
 
   case exp {
-    option.None -> Ok(Nil)
-    option.Some(v) -> {
+    None -> Ok(Nil)
+    Some(v) -> {
       let now =
         birl.now()
         |> birl.to_unix()
@@ -427,13 +429,13 @@ fn ensure_valid_not_before(payload: Payload) -> Result(Nil, JwtDecodeError) {
   }
   use nbf <- result.try(nbf)
   let nbf = case nbf {
-    -1 -> option.None
-    v -> option.Some(v)
+    -1 -> None
+    v -> Some(v)
   }
 
   case nbf {
-    option.None -> Ok(Nil)
-    option.Some(v) -> {
+    None -> Ok(Nil)
+    Some(v) -> {
       let now =
         birl.now()
         |> birl.to_unix()
