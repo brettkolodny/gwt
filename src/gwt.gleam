@@ -7,7 +7,9 @@ import gleam/json.{type Json}
 import gleam/string
 import gleam/list
 import gleam/result
+import gleam/option
 import gleam/crypto
+import birl
 
 // TYPES -----------------------------------------------------------------------
 
@@ -17,7 +19,11 @@ type Header =
 type Payload =
   Dict(String, Dynamic)
 
-pub opaque type Jwt {
+pub type Verified
+
+pub type Unverified
+
+pub opaque type Jwt(status) {
   Jwt(header: Header, payload: Payload)
 }
 
@@ -35,7 +41,15 @@ pub type JwtDecodeError {
   ///
   InvalidSignature
   ///
+  InvalidExpiration
+  ///
+  TokenExpired
+  ///
+  InvalidNotBefore
+  ///
   NoAlg
+  ///
+  InvalidAlg
 }
 
 pub type Algorithm {
@@ -45,7 +59,7 @@ pub type Algorithm {
 // CONSTRUCTORS ----------------------------------------------------------------
 
 ///
-pub fn new() -> Jwt {
+pub fn new() -> Jwt(Unverified) {
   let header =
     dict.new()
     |> dict.insert("typ", dynamic.from("JWT"))
@@ -56,119 +70,28 @@ pub fn new() -> Jwt {
 }
 
 ///
-pub fn from_string(jwt_string: String) -> Result(Jwt, JwtDecodeError) {
-  let jwt_parts = string.split(jwt_string, ".")
-  let maybe_header = list.at(jwt_parts, 0)
-  let maybe_payload = list.at(jwt_parts, 1)
-  // let maybe_signature = list.at(jwt_parts, 2)
-
-  case maybe_header, maybe_payload {
-    Error(Nil), _ -> Error(MissingHeader)
-    _, Error(Nil) -> Error(MissingPayload)
-    Ok(encoded_header), Ok(encoded_payload) -> {
-      let header = {
-        use res <- result.try(
-          encoded_header
-          |> bit_array.base64_url_decode()
-          |> result.replace_error(InvalidHeader),
-        )
-
-        use res <- result.try(
-          res
-          |> bit_array.to_string()
-          |> result.replace_error(InvalidHeader),
-        )
-
-        json.decode(res, dynamic.dict(dynamic.string, dynamic.dynamic))
-        |> result.replace_error(InvalidHeader)
-      }
-
-      let payload = {
-        use res <- result.try(
-          encoded_payload
-          |> bit_array.base64_url_decode()
-          |> result.replace_error(InvalidHeader),
-        )
-
-        use res <- result.try(
-          res
-          |> bit_array.to_string()
-          |> result.replace_error(InvalidHeader),
-        )
-
-        json.decode(res, dynamic.dict(dynamic.string, dynamic.dynamic))
-        |> result.replace_error(InvalidHeader)
-      }
-
-      case header, payload {
-        Error(_), _ -> Error(InvalidHeader)
-        _, Error(_) -> Error(InvalidPayload)
-        Ok(header), Ok(payload) -> Ok(Jwt(header, payload))
-      }
-    }
-  }
+pub fn from_string(
+  jwt_string: String,
+) -> Result(Jwt(Unverified), JwtDecodeError) {
+  use #(header, payload, _) <- result.try(parts(jwt_string))
+  Ok(Jwt(header, payload))
 }
 
 ///
 pub fn from_signed_string(
   jwt_string: String,
   secret: String,
-) -> Result(Jwt, JwtDecodeError) {
-  let jwt_parts = string.split(jwt_string, ".")
+) -> Result(Jwt(Verified), JwtDecodeError) {
+  use #(header, payload, signature) <- result.try(parts(jwt_string))
+  use signature <- result.try(option.to_result(signature, MissingSignature))
 
-  use signature <- result.try(
-    list.at(jwt_parts, 2)
-    |> result.replace_error(MissingSignature),
-  )
+  use _ <- result.try(ensure_valid_expiration(payload))
+  use alg <- result.try(ensure_valid_alg(header))
 
-  use encoded_payload <- result.try(
-    list.at(jwt_parts, 1)
-    |> result.replace_error(MissingPayload),
-  )
-
-  use encoded_header <- result.try(
-    list.at(jwt_parts, 0)
-    |> result.replace_error(MissingHeader),
-  )
-  use header_data <- result.try(
-    encoded_header
-    |> bit_array.base64_url_decode()
-    |> result.replace_error(InvalidHeader),
-  )
-  use header_string <- result.try(
-    header_data
-    |> bit_array.to_string()
-    |> result.replace_error(InvalidHeader),
-  )
-
-  use header <- result.try(
-    json.decode(header_string, dynamic.dict(dynamic.string, dynamic.dynamic))
-    |> result.replace_error(InvalidHeader),
-  )
-
-  use payload_data <- result.try(
-    encoded_payload
-    |> bit_array.base64_url_decode()
-    |> result.replace_error(InvalidHeader),
-  )
-  use payload_string <- result.try(
-    payload_data
-    |> bit_array.to_string()
-    |> result.replace_error(InvalidHeader),
-  )
-
-  use payload <- result.try(
-    json.decode(payload_string, dynamic.dict(dynamic.string, dynamic.dynamic))
-    |> result.replace_error(InvalidHeader),
-  )
-
-  use alg <- result.try(
-    dict.get(header, "alg")
-    |> result.replace_error(NoAlg),
-  )
-
-  case dynamic.string(alg) {
-    Ok("HS256") -> {
+  let assert [encoded_header, encoded_payload, ..] =
+    string.split(jwt_string, ".")
+  case alg {
+    "HS256" -> {
       let sig =
         get_signature(encoded_header <> "." <> encoded_payload, HS256, secret)
       case sig == signature {
@@ -185,7 +108,7 @@ pub fn from_signed_string(
 // PAYLOAD ---------------------------------------------------------------------
 
 ///
-pub fn get_issuer(from jwt: Jwt) -> Result(String, Nil) {
+pub fn get_issuer(from jwt: Jwt(a)) -> Result(String, Nil) {
   use issuer <- result.try(
     jwt.payload
     |> dict.get("iss"),
@@ -197,7 +120,7 @@ pub fn get_issuer(from jwt: Jwt) -> Result(String, Nil) {
 }
 
 ///
-pub fn get_subject(from jwt: Jwt) -> Result(String, Nil) {
+pub fn get_subject(from jwt: Jwt(a)) -> Result(String, Nil) {
   use issuer <- result.try(
     jwt.payload
     |> dict.get("sub"),
@@ -210,10 +133,10 @@ pub fn get_subject(from jwt: Jwt) -> Result(String, Nil) {
 
 ///
 pub fn get_payload_claim(
-  from jwt: Jwt,
+  from jwt: Jwt(a),
   claim claim: String,
-  decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
-) -> Result(a, Nil) {
+  decoder decoder: fn(Dynamic) -> Result(String, List(dynamic.DecodeError)),
+) -> Result(String, Nil) {
   use claim_value <- result.try(
     jwt.payload
     |> dict.get(claim),
@@ -225,56 +148,60 @@ pub fn get_payload_claim(
 }
 
 ///
-pub fn set_payload_issuer(jwt: Jwt, to iss: String) -> Jwt {
+pub fn set_issuer(jwt: Jwt(a), to iss: String) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, "iss", dynamic.from(iss))
 
   Jwt(..jwt, payload: new_payload)
 }
 
 ///
-pub fn set_payload_subject(jwt: Jwt, to sub: String) -> Jwt {
+pub fn set_subject(jwt: Jwt(a), to sub: String) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, "sub", dynamic.from(sub))
 
   Jwt(..jwt, payload: new_payload)
 }
 
 ///
-pub fn set_payload_audience(jwt: Jwt, to aud: String) -> Jwt {
+pub fn set_audience(jwt: Jwt(a), to aud: String) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, "aud", dynamic.from(aud))
 
   Jwt(..jwt, payload: new_payload)
 }
 
 ///
-pub fn set_payload_expiration(jwt: Jwt, to exp: Int) -> Jwt {
+pub fn set_expiration(jwt: Jwt(a), to exp: Int) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, "exp", dynamic.from(exp))
 
   Jwt(..jwt, payload: new_payload)
 }
 
 ///
-pub fn set_payload_not_before(jwt: Jwt, to nbf: Int) -> Jwt {
+pub fn set_not_before(jwt: Jwt(a), to nbf: Int) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, "nbf", dynamic.from(nbf))
 
   Jwt(..jwt, payload: new_payload)
 }
 
 ///
-pub fn set_payload_issued_at(jwt: Jwt, to iat: Int) -> Jwt {
+pub fn set_issued_at(jwt: Jwt(a), to iat: Int) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, "iat", dynamic.from(iat))
 
   Jwt(..jwt, payload: new_payload)
 }
 
 ///
-pub fn set_payload_jwt_id(jwt: Jwt, to jti: String) -> Jwt {
+pub fn set_jwt_id(jwt: Jwt(a), to jti: String) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, "jti", dynamic.from(jti))
 
   Jwt(..jwt, payload: new_payload)
 }
 
 ///
-pub fn set_payload_claim(jwt: Jwt, set claim: String, to value: Json) -> Jwt {
+pub fn set_payload_claim(
+  jwt: Jwt(a),
+  set claim: String,
+  to value: Json,
+) -> Jwt(a) {
   let new_payload = dict.insert(jwt.payload, claim, dynamic.from(value))
 
   Jwt(..jwt, payload: new_payload)
@@ -282,7 +209,11 @@ pub fn set_payload_claim(jwt: Jwt, set claim: String, to value: Json) -> Jwt {
 
 // HEADER ----------------------------------------------------------------------
 
-pub fn set_header_claim(jwt: Jwt, set claim: String, to value: Json) -> Jwt {
+pub fn set_header_claim(
+  jwt: Jwt(a),
+  set claim: String,
+  to value: Json,
+) -> Jwt(a) {
   let new_header = dict.insert(jwt.header, claim, dynamic.from(value))
 
   Jwt(..jwt, header: new_header)
@@ -290,7 +221,7 @@ pub fn set_header_claim(jwt: Jwt, set claim: String, to value: Json) -> Jwt {
 
 // ENCODER ---------------------------------------------------------------------
 
-pub fn to_string(jwt: Jwt) -> String {
+pub fn to_string(jwt: Jwt(a)) -> String {
   let Jwt(header, payload) = jwt
 
   let header_string =
@@ -310,7 +241,7 @@ pub fn to_string(jwt: Jwt) -> String {
   header_string <> "." <> payload_string
 }
 
-pub fn to_signed_string(jwt: Jwt, alg: Algorithm, secret: String) -> String {
+pub fn to_signed_string(jwt: Jwt(a), alg: Algorithm, secret: String) -> String {
   case alg {
     HS256 -> {
       let header_with_alg =
@@ -357,7 +288,7 @@ fn dict_to_json_object(d: Dict(String, Dynamic)) -> Json {
         let assert Ok(d) = decoder(value)
         dict_to_json_object(d)
       }
-      _ -> panic
+      _ -> panic as "Unsupported JSON data type"
     }
     [#(key, json_value), ..acc]
   }
@@ -374,4 +305,98 @@ fn get_signature(data: String, algorithm: Algorithm, secret: String) -> String {
       |> bit_array.base64_url_encode(False)
     }
   }
+}
+
+fn parts(
+  jwt_string: String,
+) -> Result(#(Header, Payload, option.Option(String)), JwtDecodeError) {
+  let jwt_parts = string.split(jwt_string, ".")
+
+  let signature =
+    list.at(jwt_parts, 2)
+    |> option.from_result()
+
+  use encoded_payload <- result.try(
+    list.at(jwt_parts, 1)
+    |> result.replace_error(MissingPayload),
+  )
+
+  use encoded_header <- result.try(
+    list.at(jwt_parts, 0)
+    |> result.replace_error(MissingHeader),
+  )
+  use header_data <- result.try(
+    encoded_header
+    |> bit_array.base64_url_decode()
+    |> result.replace_error(InvalidHeader),
+  )
+  use header_string <- result.try(
+    header_data
+    |> bit_array.to_string()
+    |> result.replace_error(InvalidHeader),
+  )
+
+  use header <- result.try(
+    json.decode(header_string, dynamic.dict(dynamic.string, dynamic.dynamic))
+    |> result.replace_error(InvalidHeader),
+  )
+
+  use payload_data <- result.try(
+    encoded_payload
+    |> bit_array.base64_url_decode()
+    |> result.replace_error(InvalidHeader),
+  )
+  use payload_string <- result.try(
+    payload_data
+    |> bit_array.to_string()
+    |> result.replace_error(InvalidHeader),
+  )
+
+  use payload <- result.try(
+    json.decode(payload_string, dynamic.dict(dynamic.string, dynamic.dynamic))
+    |> result.replace_error(InvalidHeader),
+  )
+
+  Ok(#(header, payload, signature))
+}
+
+fn ensure_valid_expiration(payload: Payload) -> Result(Nil, JwtDecodeError) {
+  let exp = {
+    use exp <- result.try(
+      dict.get(payload, "exp")
+      |> result.or(Ok(dynamic.from(-1)))
+      |> result.replace_error(InvalidHeader),
+    )
+    dynamic.int(exp)
+    |> result.replace_error(InvalidHeader)
+  }
+  use exp <- result.try(exp)
+  let exp = case exp {
+    -1 -> option.None
+    v -> option.Some(v)
+  }
+
+  case exp {
+    option.None -> Ok(Nil)
+    option.Some(v) -> {
+      let now =
+        birl.now()
+        |> birl.to_unix()
+      case now < v {
+        True -> Ok(Nil)
+        False -> Error(TokenExpired)
+      }
+    }
+  }
+}
+
+fn ensure_valid_alg(header: Header) -> Result(String, JwtDecodeError) {
+  use alg <- result.try(
+    dict.get(header, "alg")
+    |> result.replace_error(NoAlg),
+  )
+
+  alg
+  |> dynamic.string()
+  |> result.replace_error(InvalidAlg)
 }
