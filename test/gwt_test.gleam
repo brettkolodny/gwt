@@ -68,6 +68,26 @@ pub fn encode_decode_signed_jwt_test() {
   jwt
   |> gwt.get_payload_claim("iss", dynamic.string)
   |> should.equal(Error(Nil))
+
+  let jwt =
+    gwt.new()
+    |> gwt.set_subject("1234567890")
+    |> gwt.set_audience("0987654321")
+
+  jwt
+  |> gwt.to_signed_string(gwt.HS256, signing_secret)
+  |> gwt.from_signed_string(signing_secret)
+  |> should.be_ok()
+
+  jwt
+  |> gwt.to_signed_string(gwt.HS384, signing_secret)
+  |> gwt.from_signed_string(signing_secret)
+  |> should.be_ok()
+
+  jwt
+  |> gwt.to_signed_string(gwt.HS512, signing_secret)
+  |> gwt.from_signed_string(signing_secret)
+  |> should.be_ok()
 }
 
 pub fn exp_jwt_test() {

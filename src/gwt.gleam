@@ -56,6 +56,8 @@ pub type JwtDecodeError {
 
 pub type Algorithm {
   HS256
+  HS384
+  HS512
 }
 
 // CONSTRUCTORS ----------------------------------------------------------------
@@ -94,9 +96,16 @@ pub fn from_signed_string(
   let assert [encoded_header, encoded_payload, ..] =
     string.split(jwt_string, ".")
   case alg {
-    "HS256" -> {
+    "HS256" | "HS384" | "HS512" -> {
+      let alg = case alg {
+        "HS256" -> HS256
+        "HS384" -> HS384
+        "HS512" -> HS512
+        _ -> panic as "Should not be reachable"
+      }
+
       let sig =
-        get_signature(encoded_header <> "." <> encoded_payload, HS256, secret)
+        get_signature(encoded_header <> "." <> encoded_payload, alg, secret)
       case sig == signature {
         True -> {
           Ok(Jwt(header: header, payload: payload))
@@ -244,11 +253,18 @@ pub fn to_string(jwt: Jwt(a)) -> String {
   header_string <> "." <> payload_string
 }
 
+///
 pub fn to_signed_string(jwt: Jwt(a), alg: Algorithm, secret: String) -> String {
   case alg {
-    HS256 -> {
+    HS256 | HS384 | HS512 -> {
+      let #(alg_string, hash_alg) = case alg {
+        HS256 -> #("HS256", crypto.Sha256)
+        HS384 -> #("HS384", crypto.Sha384)
+        HS512 -> #("HS512", crypto.Sha512)
+      }
+
       let header_with_alg =
-        dict.insert(jwt.header, "alg", dynamic.from("HS256"))
+        dict.insert(jwt.header, "alg", dynamic.from(alg_string))
       let jwt_body =
         Jwt(..jwt, header: header_with_alg)
         |> to_string()
@@ -256,7 +272,7 @@ pub fn to_signed_string(jwt: Jwt(a), alg: Algorithm, secret: String) -> String {
       let jwt_signature =
         jwt_body
         |> bit_array.from_string()
-        |> crypto.hmac(crypto.Sha256, bit_array.from_string(secret))
+        |> crypto.hmac(hash_alg, bit_array.from_string(secret))
         |> bit_array.base64_url_encode(False)
 
       jwt_body <> "." <> jwt_signature
@@ -301,10 +317,16 @@ fn dict_to_json_object(d: Dict(String, Dynamic)) -> Json {
 
 fn get_signature(data: String, algorithm: Algorithm, secret: String) -> String {
   case algorithm {
-    HS256 -> {
+    HS256 | HS384 | HS512 -> {
+      let hash_alg = case algorithm {
+        HS256 -> crypto.Sha256
+        HS384 -> crypto.Sha384
+        HS512 -> crypto.Sha512
+      }
+
       data
       |> bit_array.from_string()
-      |> crypto.hmac(crypto.Sha256, bit_array.from_string(secret))
+      |> crypto.hmac(hash_alg, bit_array.from_string(secret))
       |> bit_array.base64_url_encode(False)
     }
   }
