@@ -19,16 +19,18 @@ type Header =
 type Payload =
   Dict(String, Dynamic)
 
+///
 pub type Verified
 
+///
 pub type Unverified
 
 pub opaque type Jwt(status) {
   Jwt(header: Header, payload: Payload)
 }
 
+///
 pub type JwtDecodeError {
-  ///
   MissingHeader
   ///
   MissingPayload
@@ -56,6 +58,11 @@ pub type JwtDecodeError {
   UnsupportedSigningAlgorithm
 }
 
+/// Available [JSON Web Algorithms](https://datatracker.ietf.org/doc/html/rfc7518#section-3.2) used for encoding and decdoing signatures in [from_signed_string](#from_signed_string) and [to_signed_string](#to_signed_string).
+///
+/// If JWT calls for a different algorithm than the ones listed here [from_signed_string](#from_signed_string) will fail
+/// with the [JwtDecodeError](#JwtDecodeError) `UnsupportedSigningAlgorithm`.
+///
 pub type Algorithm {
   HS256
   HS384
@@ -64,6 +71,16 @@ pub type Algorithm {
 
 // CONSTRUCTORS ----------------------------------------------------------------
 
+/// Creates an [Unverified](#Unverified) Jwt with an empty payload and a header that only 
+/// contains the cliams `"typ": "JWT"`, and `"alg": "none"`.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example() -> Jwt(gwt.Unverified) {
+///   gwt.new()
+/// }
+/// ```
 ///
 pub fn new() -> Jwt(Unverified) {
   let header =
@@ -162,52 +179,52 @@ pub fn get_payload_claim(
 }
 
 ///
-pub fn set_issuer(jwt: Jwt(a), to iss: String) -> Jwt(a) {
+pub fn set_issuer(jwt: Jwt(a), to iss: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "iss", dynamic.from(iss))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 ///
-pub fn set_subject(jwt: Jwt(a), to sub: String) -> Jwt(a) {
+pub fn set_subject(jwt: Jwt(a), to sub: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "sub", dynamic.from(sub))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 ///
-pub fn set_audience(jwt: Jwt(a), to aud: String) -> Jwt(a) {
+pub fn set_audience(jwt: Jwt(a), to aud: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "aud", dynamic.from(aud))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 ///
-pub fn set_expiration(jwt: Jwt(a), to exp: Int) -> Jwt(a) {
+pub fn set_expiration(jwt: Jwt(a), to exp: Int) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "exp", dynamic.from(exp))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 ///
-pub fn set_not_before(jwt: Jwt(a), to nbf: Int) -> Jwt(a) {
+pub fn set_not_before(jwt: Jwt(a), to nbf: Int) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "nbf", dynamic.from(nbf))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 ///
-pub fn set_issued_at(jwt: Jwt(a), to iat: Int) -> Jwt(a) {
+pub fn set_issued_at(jwt: Jwt(a), to iat: Int) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "iat", dynamic.from(iat))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 ///
-pub fn set_jwt_id(jwt: Jwt(a), to jti: String) -> Jwt(a) {
+pub fn set_jwt_id(jwt: Jwt(a), to jti: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "jti", dynamic.from(jti))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 ///
@@ -215,10 +232,10 @@ pub fn set_payload_claim(
   jwt: Jwt(a),
   set claim: String,
   to value: Json,
-) -> Jwt(a) {
+) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, claim, dynamic.from(value))
 
-  Jwt(..jwt, payload: new_payload)
+  Jwt(jwt.header, payload: new_payload)
 }
 
 // HEADER ----------------------------------------------------------------------
@@ -227,10 +244,10 @@ pub fn set_header_claim(
   jwt: Jwt(a),
   set claim: String,
   to value: Json,
-) -> Jwt(a) {
+) -> Jwt(Unverified) {
   let new_header = dict.insert(jwt.header, claim, dynamic.from(value))
 
-  Jwt(..jwt, header: new_header)
+  Jwt(jwt.payload, header: new_header)
 }
 
 // ENCODER ---------------------------------------------------------------------
