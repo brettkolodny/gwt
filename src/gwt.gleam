@@ -45,6 +45,8 @@ pub type JwtDecodeError {
   ///
   TokenExpired
   ///
+  TokenNotValidYet
+  ///
   InvalidNotBefore
   ///
   NoAlg
@@ -86,6 +88,7 @@ pub fn from_signed_string(
   use signature <- result.try(option.to_result(signature, MissingSignature))
 
   use _ <- result.try(ensure_valid_expiration(payload))
+  use _ <- result.try(ensure_valid_not_before(payload))
   use alg <- result.try(ensure_valid_alg(header))
 
   let assert [encoded_header, encoded_payload, ..] =
@@ -385,6 +388,36 @@ fn ensure_valid_expiration(payload: Payload) -> Result(Nil, JwtDecodeError) {
       case now < v {
         True -> Ok(Nil)
         False -> Error(TokenExpired)
+      }
+    }
+  }
+}
+
+fn ensure_valid_not_before(payload: Payload) -> Result(Nil, JwtDecodeError) {
+  let nbf = {
+    use nbf <- result.try(
+      dict.get(payload, "nbf")
+      |> result.or(Ok(dynamic.from(-1)))
+      |> result.replace_error(InvalidHeader),
+    )
+    dynamic.int(nbf)
+    |> result.replace_error(InvalidHeader)
+  }
+  use nbf <- result.try(nbf)
+  let nbf = case nbf {
+    -1 -> option.None
+    v -> option.Some(v)
+  }
+
+  case nbf {
+    option.None -> Ok(Nil)
+    option.Some(v) -> {
+      let now =
+        birl.now()
+        |> birl.to_unix()
+      case now > v {
+        True -> Ok(Nil)
+        False -> Error(TokenNotValidYet)
       }
     }
   }

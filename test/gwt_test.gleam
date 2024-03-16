@@ -70,7 +70,7 @@ pub fn encode_decode_signed_jwt_test() {
   |> should.equal(Error(Nil))
 }
 
-pub fn exp_jst_test() {
+pub fn exp_jwt_test() {
   gwt.new()
   |> gwt.set_subject("1234567890")
   |> gwt.set_audience("0987654321")
@@ -92,4 +92,28 @@ pub fn exp_jst_test() {
   |> gwt.to_signed_string(gwt.HS256, signing_secret)
   |> gwt.from_signed_string(signing_secret)
   |> should.equal(Error(gwt.TokenExpired))
+}
+
+pub fn nbf_jwt_test() {
+  gwt.new()
+  |> gwt.set_subject("1234567890")
+  |> gwt.set_audience("0987654321")
+  |> gwt.set_not_before(
+    {
+      birl.now()
+      |> birl.to_unix()
+    }
+    + 100_000,
+  )
+  |> gwt.to_signed_string(gwt.HS256, signing_secret)
+  |> gwt.from_signed_string(signing_secret)
+  |> should.equal(Error(gwt.TokenNotValidYet))
+
+  gwt.new()
+  |> gwt.set_subject("1234567890")
+  |> gwt.set_audience("0987654321")
+  |> gwt.set_not_before(0)
+  |> gwt.to_signed_string(gwt.HS256, signing_secret)
+  |> gwt.from_signed_string(signing_secret)
+  |> should.be_ok()
 }
