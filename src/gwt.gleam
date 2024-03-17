@@ -19,12 +19,15 @@ type Header =
 type Payload =
   Dict(String, Dynamic)
 
+/// A phantom type representing a Jwt successfully decoded from a signed string.
 ///
 pub type Verified
 
+/// A phantom type representing an unverified Jwt.
 ///
 pub type Unverified
 
+///
 pub opaque type Jwt(status) {
   Jwt(header: Header, payload: Payload)
 }
@@ -75,9 +78,9 @@ pub type Algorithm {
 /// contains the cliams `"typ": "JWT"`, and `"alg": "none"`.
 ///
 /// ```gleam
-/// import gwt
+/// import gwt.{type Jwt, type Unverified}
 /// 
-/// fn example() -> Jwt(gwt.Unverified) {
+/// fn example() -> Jwt(Unverified) {
 ///   gwt.new()
 /// }
 /// ```
@@ -92,6 +95,17 @@ pub fn new() -> Jwt(Unverified) {
   Jwt(header, payload)
 }
 
+/// Decode a JWT string into an unverified [Jwt](#Jwt).
+/// 
+/// Returns `Ok(Jwt(Unverified))` if it is a valid JWT, and `Error(JwtDecodeError)` otherwise.
+///
+/// ```gleam
+/// import gwt.{type Jwt, type Unverified, type JwtDecodeError}
+/// 
+/// fn example(jwt_string: String) -> Result(Jwt(Unverified), JwtDecodeError) {
+///   gwt.from_string(jwt_string)
+/// }
+/// ```
 ///
 pub fn from_string(
   jwt_string: String,
@@ -100,6 +114,21 @@ pub fn from_string(
   Ok(Jwt(header, payload))
 }
 
+/// Decode a signed JWT string into a verified [Jwt](#Jwt).
+/// 
+/// Returns `Ok(Jwt(Unverified))` if it is a valid JWT and the JWT's signature is successfully verified,
+/// and `Error(JwtDecodeError)` otherwise.
+///
+/// At the moment this library only supports `HS256`, `HS384`, and `HS512` hashing algorithms.
+/// if a JWT's alg claim calls for any other this function will return `Error(UnsupportedSigningAlgorithm)`.
+///
+/// ```gleam
+/// import gwt.{type Jwt, type Verified, type JwtDecodeError}
+/// 
+/// fn example(jwt_string: String) -> Result(Jwt(Verified), JwtDecodeError) {
+///   gwt.from_signed_string(jwt_string, "some secret")
+/// }
+/// ```
 ///
 pub fn from_signed_string(
   jwt_string: String,
@@ -138,8 +167,30 @@ pub fn from_signed_string(
 
 // PAYLOAD ---------------------------------------------------------------------
 
+/// Retrieve the iss from the JWT's payload.
 ///
-pub fn get_issuer(from jwt: Jwt(a)) -> Result(String, Nil) {
+/// Returns `Error(Nil)` if the iss is not present or if it is invalid.
+///
+/// If you know the iss claim is not of type `String` you can use [get_payload_claim](#get_payload_claim)
+/// to retrieve and decode it manually.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example()  {
+///   let jwt_with_iss = 
+///     gwt.new()
+///     |> jwt.set_issuer("gleam")
+/// 
+///   let assert Ok(issuer) = gwt.get_issuer(jwt_with_iss)
+/// 
+///   let jwt_without_iss = gwt.new()
+/// 
+///   let assert Error(Nil) = gwt.get_issuer(jwt_without_iss)
+/// }
+/// ```
+///
+pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, Nil) {
   use issuer <- result.try(
     jwt.payload
     |> dict.get("iss"),
@@ -150,8 +201,30 @@ pub fn get_issuer(from jwt: Jwt(a)) -> Result(String, Nil) {
   |> result.nil_error()
 }
 
+/// Retrieve the sub from the JWT's payload.
 ///
-pub fn get_subject(from jwt: Jwt(a)) -> Result(String, Nil) {
+/// Returns `Error(Nil)` if the sub is not present or if it is invalid.
+///
+/// If you know the sub claim is not of type `String` you can use [get_payload_claim](#get_payload_claim)
+/// to retrieve and decode it manually.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example()  {
+///   let jwt_with_sub = 
+///     gwt.new()
+///     |> jwt.set_subject("gleam")
+/// 
+///   let assert Ok(subject) = gwt.get_issuer(jwt_with_sub)
+/// 
+///   let jwt_without_sub = gwt.new()
+/// 
+///   let assert Error(Nil) = gwt.get_subject(jwt_without_sub)
+/// }
+/// ```
+///
+pub fn get_subject(from jwt: Jwt(status)) -> Result(String, Nil) {
   use issuer <- result.try(
     jwt.payload
     |> dict.get("sub"),
@@ -162,12 +235,33 @@ pub fn get_subject(from jwt: Jwt(a)) -> Result(String, Nil) {
   |> result.nil_error()
 }
 
+/// Retrieve and decode a claim from a JWT's payload.
+///
+/// Returns `Error` if the claim is not present or if it is invalid based on the passed in decoder.
+///
+/// ```gleam
+/// import gwt
+/// import gleam/json
+/// import gleam/dynamic
+/// 
+/// fn example() {
+///   let jwt_with_custom_claim =
+///     gwt.new()
+///     |> gwt.set_payload_claim("gleam", json.string("lucy"))
+/// 
+///   let assert Ok("lucy") =
+///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.string)
+/// 
+///   let assert Error(Nil) =
+///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.int)
+/// }
+///```
 ///
 pub fn get_payload_claim(
-  from jwt: Jwt(a),
+  from jwt: Jwt(status),
   claim claim: String,
-  decoder decoder: fn(Dynamic) -> Result(String, List(dynamic.DecodeError)),
-) -> Result(String, Nil) {
+  decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
+) -> Result(a, Nil) {
   use claim_value <- result.try(
     jwt.payload
     |> dict.get(claim),
@@ -178,58 +272,147 @@ pub fn get_payload_claim(
   |> result.nil_error()
 }
 
+/// Set the iss claim of a payload, and changing the JWT to unverified.
 ///
-pub fn set_issuer(jwt: Jwt(a), to iss: String) -> Jwt(Unverified) {
+/// ```gleam
+/// import gwt
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_issuer("gleam")
+/// }
+/// ``` 
+///
+pub fn set_issuer(jwt: Jwt(status), to iss: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "iss", dynamic.from(iss))
 
   Jwt(jwt.header, payload: new_payload)
 }
 
+/// Set the sub claim of a payload, and changing the JWT to unverified.
 ///
-pub fn set_subject(jwt: Jwt(a), to sub: String) -> Jwt(Unverified) {
+/// ```gleam
+/// import gwt
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_subject("gleam")
+/// }
+/// ``` 
+///
+pub fn set_subject(jwt: Jwt(status), to sub: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "sub", dynamic.from(sub))
 
   Jwt(jwt.header, payload: new_payload)
 }
 
+/// Set the aud claim of a payload, and changing the JWT to unverified.
 ///
-pub fn set_audience(jwt: Jwt(a), to aud: String) -> Jwt(Unverified) {
+/// ```gleam
+/// import gwt
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_audience("gleam")
+/// }
+/// ``` 
+///
+pub fn set_audience(jwt: Jwt(status), to aud: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "aud", dynamic.from(aud))
 
   Jwt(jwt.header, payload: new_payload)
 }
 
+/// Set the exp claim of a payload, and changing the JWT to unverified.
 ///
-pub fn set_expiration(jwt: Jwt(a), to exp: Int) -> Jwt(Unverified) {
+/// ```gleam
+/// import gwt
+/// import birl
+/// 
+/// fn example() {
+///   let five_minutes = birl.to_unix(birl.now()) + 300
+/// 
+///   gwt.new()
+///   |> gwt.set_expiration(five_minutes)
+/// }
+/// ``` 
+///
+pub fn set_expiration(jwt: Jwt(status), to exp: Int) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "exp", dynamic.from(exp))
 
   Jwt(jwt.header, payload: new_payload)
 }
 
+/// Set the nbf claim of a payload, and changing the JWT to unverified.
 ///
-pub fn set_not_before(jwt: Jwt(a), to nbf: Int) -> Jwt(Unverified) {
+/// ```gleam
+/// import gwt
+/// import birl
+/// 
+/// fn example() {
+///   let five_minutes = birl.to_unix(birl.now()) + 300
+/// 
+///   gwt.new()
+///   |> gwt.set_not_before(five_minutes)
+/// }
+/// ``` 
+///
+pub fn set_not_before(jwt: Jwt(status), to nbf: Int) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "nbf", dynamic.from(nbf))
 
   Jwt(jwt.header, payload: new_payload)
 }
 
+/// Set the nbf claim of a payload, and changing the JWT to unverified.
 ///
-pub fn set_issued_at(jwt: Jwt(a), to iat: Int) -> Jwt(Unverified) {
+/// ```gleam
+/// import gwt
+/// import birl
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_not_before(birl.to_unix(birl.now()))
+/// }
+/// ``` 
+///
+pub fn set_issued_at(jwt: Jwt(status), to iat: Int) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "iat", dynamic.from(iat))
 
   Jwt(jwt.header, payload: new_payload)
 }
 
+/// Set the jti claim of a payload, and changing the JWT to unverified.
 ///
-pub fn set_jwt_id(jwt: Jwt(a), to jti: String) -> Jwt(Unverified) {
+/// ```gleam
+/// import gwt
+/// import birl
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_jwt_id("gleam")
+/// }
+/// ``` 
+///
+pub fn set_jwt_id(jwt: Jwt(status), to jti: String) -> Jwt(Unverified) {
   let new_payload = dict.insert(jwt.payload, "jti", dynamic.from(jti))
 
   Jwt(jwt.header, payload: new_payload)
 }
 
+/// Set a custom payload claim to a given JSON value, and changing the JWT to unverified.
+///
+/// ```gleam
+/// import gleam/json
+/// import gwt
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_payload_claim("gleam", json.string("lucy"))
+/// }
+/// ``` 
 ///
 pub fn set_payload_claim(
-  jwt: Jwt(a),
+  jwt: Jwt(status),
   set claim: String,
   to value: Json,
 ) -> Jwt(Unverified) {
@@ -240,8 +423,20 @@ pub fn set_payload_claim(
 
 // HEADER ----------------------------------------------------------------------
 
+/// Set a custom header claim to a given JSON value, and changing the JWT to unverified.
+///
+/// ```gleam
+/// import gleam/json
+/// import gwt
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_header_claim("gleam", json.string("lucy"))
+/// }
+/// ``` 
+///
 pub fn set_header_claim(
-  jwt: Jwt(a),
+  jwt: Jwt(status),
   set claim: String,
   to value: Json,
 ) -> Jwt(Unverified) {
@@ -252,7 +447,19 @@ pub fn set_header_claim(
 
 // ENCODER ---------------------------------------------------------------------
 
-pub fn to_string(jwt: Jwt(a)) -> String {
+/// Encode a [Jwt](#Jwt) to a String without a signature
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_issuer("gleam")
+///   |> gwt.to_string()
+/// }
+/// ``` 
+///
+pub fn to_string(jwt: Jwt(status)) -> String {
   let Jwt(header, payload) = jwt
 
   let header_string =
@@ -272,8 +479,23 @@ pub fn to_string(jwt: Jwt(a)) -> String {
   header_string <> "." <> payload_string
 }
 
+/// Encode a [Jwt](#Jwt) to a signed String using the given [Algorithm](#Algorithm) and secret.
 ///
-pub fn to_signed_string(jwt: Jwt(a), alg: Algorithm, secret: String) -> String {
+/// ```gleam
+/// import gwt
+/// 
+/// fn example() {
+///   gwt.new()
+///   |> gwt.set_issuer("gleam")
+///   |> gwt.to_signed_string(gwt.HS256, "lucy")
+/// }
+/// ``` 
+///
+pub fn to_signed_string(
+  jwt: Jwt(status),
+  alg: Algorithm,
+  secret: String,
+) -> String {
   case alg {
     HS256 | HS384 | HS512 -> {
       let #(alg_string, hash_alg) = case alg {
