@@ -3,7 +3,7 @@
 import gleam/bit_array
 import gleam/crypto
 import gleam/dict.{type Dict}
-import gleam/dynamic.{type Dynamic}
+import gleam/dynamic.{type DecodeError, type Dynamic}
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -59,6 +59,10 @@ pub type JwtDecodeError {
   InvalidAlg
   ///
   UnsupportedSigningAlgorithm
+  ///
+  MissingClaim
+  ///
+  InvalidClaim(List(DecodeError))
 }
 
 /// Available [JSON Web Algorithms](https://datatracker.ietf.org/doc/html/rfc7518#section-3.2) used for encoding and decdoing signatures in [from_signed_string](#from_signed_string) and [to_signed_string](#to_signed_string).
@@ -186,19 +190,12 @@ pub fn from_signed_string(
 /// 
 ///   let jwt_without_iss = gwt.new()
 /// 
-///   let assert Error(Nil) = gwt.get_issuer(jwt_without_iss)
+///   let assert Error(MissingClaim) = gwt.get_issuer(jwt_without_iss)
 /// }
 /// ```
 ///
-pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, Nil) {
-  use issuer <- result.try(
-    jwt.payload
-    |> dict.get("iss"),
-  )
-
-  issuer
-  |> dynamic.string()
-  |> result.nil_error()
+pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
+  get_payload_claim(jwt, "iss", dynamic.string)
 }
 
 /// Retrieve the sub from the JWT's payload.
@@ -220,19 +217,147 @@ pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, Nil) {
 /// 
 ///   let jwt_without_sub = gwt.new()
 /// 
-///   let assert Error(Nil) = gwt.get_subject(jwt_without_sub)
+///   let assert Error(MissingClaim) = gwt.get_subject(jwt_without_sub)
 /// }
 /// ```
 ///
-pub fn get_subject(from jwt: Jwt(status)) -> Result(String, Nil) {
-  use issuer <- result.try(
-    jwt.payload
-    |> dict.get("sub"),
-  )
+pub fn get_subject(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
+  get_payload_claim(jwt, "sub", dynamic.string)
+}
 
-  issuer
-  |> dynamic.string()
-  |> result.nil_error()
+/// Retrieve the aud from the JWT's payload.
+///
+/// Returns `Error(Nil)` if the sub is not present or if it is invalid.
+///
+/// If you know the aud claim is not of type `String` you can use [get_payload_claim](#get_payload_claim)
+/// to retrieve and decode it manually.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example()  {
+///   let jwt_with_aud = 
+///     gwt.new()
+///     |> jwt.set_audience("gleam")
+/// 
+///   let assert Ok(audience) = gwt.get_audience(jwt_with_aud)
+/// 
+///   let jwt_without_aud = gwt.new()
+/// 
+///   let assert Error(MissingClaim) = gwt.get_audience(jwt_without_aud)
+/// }
+/// ```
+///
+pub fn get_audience(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
+  get_payload_claim(jwt, "aud", dynamic.string)
+}
+
+/// Retrieve the jti from the JWT's payload.
+///
+/// Returns `Error(Nil)` if the jti is not present or if it is invalid.
+///
+/// If you know the jti claim is not of type `String` you can use [get_payload_claim](#get_payload_claim)
+/// to retrieve and decode it manually.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example()  {
+///   let jwt_with_jti = 
+///     gwt.new()
+///     |> jwt.set_jwt_id("gleam")
+/// 
+///   let assert Ok(jwt_id) = gwt.get_jwt_id(jwt_with_jti)
+/// 
+///   let jwt_without_jti = gwt.new()
+/// 
+///   let assert Error(MissingClaim) = gwt.get_jwt_id(jwt_without_jti)
+/// }
+/// ```
+///
+pub fn get_jwt_id(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
+  get_payload_claim(jwt, "jti", dynamic.string)
+}
+
+/// Retrieve the iat from the JWT's payload.
+///
+/// Returns `Error(Nil)` if the iat is not present or if it is invalid.
+///
+/// If you know the iat claim is not of type `String` you can use [get_payload_claim](#get_payload_claim)
+/// to retrieve and decode it manually.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example()  {
+///   let jwt_with_iat = 
+///     gwt.new()
+///     |> jwt.set_issued_at("gleam")
+/// 
+///   let assert Ok(issued_at) = gwt.get_issued_at(jwt_with_iat)
+/// 
+///   let jwt_without_iat = gwt.new()
+/// 
+///   let assert Error(MissingClaim) = gwt.get_issued_at(jwt_without_iat)
+/// }
+/// ```
+///
+pub fn get_issued_at(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
+  get_payload_claim(jwt, "iat", dynamic.int)
+}
+
+/// Retrieve the nbf from the JWT's payload.
+///
+/// Returns `Error(Nil)` if the nbf is not present or if it is invalid.
+///
+/// If you know the nbf claim is not of type `String` you can use [get_payload_claim](#get_payload_claim)
+/// to retrieve and decode it manually.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example()  {
+///   let jwt_with_sub = 
+///     gwt.new()
+///     |> jwt.set_not_before("gleam")
+/// 
+///   let assert Ok(not_before) = gwt.get_not_before(jwt_with_nbf)
+/// 
+///   let jwt_without_nbf = gwt.new()
+/// 
+///   let assert Error(MissingClaim) = gwt.get_not_before(jwt_without_nbf)
+/// }
+/// ```
+///
+pub fn get_not_before(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
+  get_payload_claim(jwt, "nbf", dynamic.int)
+}
+
+/// Retrieve the exp from the JWT's payload.
+///
+/// Returns `Error(Nil)` if the exp is not present or if it is invalid.
+///
+/// If you know the exp claim is not of type `String` you can use [get_payload_claim](#get_payload_claim)
+/// to retrieve and decode it manually.
+///
+/// ```gleam
+/// import gwt
+/// 
+/// fn example()  {
+///   let jwt_with_exp = 
+///     gwt.new()
+///     |> jwt.set_not_before("gleam")
+/// 
+///   let assert Ok(expiration) = gwt.get_not_before(jwt_with_exp)
+/// 
+///   let jwt_without_exp = gwt.new()
+/// 
+///   let assert Error(MissingClaim) = gwt.get_not_before(jwt_without_exp)
+/// }
+/// ```
+///
+pub fn get_expiration(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
+  get_payload_claim(jwt, "exp", dynamic.int)
 }
 
 /// Retrieve and decode a claim from a JWT's payload.
@@ -252,24 +377,25 @@ pub fn get_subject(from jwt: Jwt(status)) -> Result(String, Nil) {
 ///   let assert Ok("lucy") =
 ///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.string)
 /// 
-///   let assert Error(Nil) =
+///   let assert Error(MissingClaim) =
 ///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.int)
 /// }
-///```
+/// ```
 ///
 pub fn get_payload_claim(
   from jwt: Jwt(status),
   claim claim: String,
   decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
-) -> Result(a, Nil) {
+) -> Result(a, JwtDecodeError) {
   use claim_value <- result.try(
     jwt.payload
-    |> dict.get(claim),
+    |> dict.get(claim)
+    |> result.replace_error(MissingClaim),
   )
 
   claim_value
   |> decoder()
-  |> result.nil_error()
+  |> result.map_error(fn(e) { InvalidClaim(e) })
 }
 
 /// Set the iss claim of a payload, and changing the JWT to unverified.
@@ -443,6 +569,43 @@ pub fn set_header_claim(
   let new_header = dict.insert(jwt.header, claim, dynamic.from(value))
 
   Jwt(jwt.payload, header: new_header)
+}
+
+/// Retrieve and decode a claim from a JWT's header.
+///
+/// Returns `Error` if the claim is not present or if it is invalid based on the passed in decoder.
+///
+/// ```gleam
+/// import gwt
+/// import gleam/json
+/// import gleam/dynamic
+/// 
+/// fn example() {
+///   let jwt_with_custom_claim =
+///     gwt.new()
+///     |> gwt.set_header_claim("gleam", json.string("lucy"))
+/// 
+///   let assert Ok("lucy") =
+///     gwt.get_header_claim(jwt_with_custom_claim, "gleam", dynamic.string)
+/// 
+///   let assert Error(MissingClaim) =
+///     gwt.get_header_claim(jwt_with_custom_claim, "gleam", dynamic.int)
+/// }
+/// ```
+///
+pub fn get_header_claim(
+  from jwt: Jwt(status),
+  claim claim: String,
+  decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
+) -> Result(a, Nil) {
+  use claim_value <- result.try(
+    jwt.header
+    |> dict.get(claim),
+  )
+
+  claim_value
+  |> decoder()
+  |> result.nil_error()
 }
 
 // ENCODER ---------------------------------------------------------------------

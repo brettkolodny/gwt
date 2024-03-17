@@ -36,7 +36,7 @@ pub fn encode_decode_unsigned_jwt_test() {
 
   jwt
   |> gwt.get_payload_claim("iss", dynamic.string)
-  |> should.equal(Error(Nil))
+  |> should.equal(Error(gwt.MissingClaim))
 }
 
 pub fn encode_decode_signed_jwt_test() {
@@ -67,7 +67,7 @@ pub fn encode_decode_signed_jwt_test() {
 
   jwt
   |> gwt.get_payload_claim("iss", dynamic.string)
-  |> should.equal(Error(Nil))
+  |> should.equal(Error(gwt.MissingClaim))
 
   let jwt =
     gwt.new()
