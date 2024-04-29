@@ -1,5 +1,6 @@
 // IMPORTS ---------------------------------------------------------------------
 
+import birl
 import gleam/bit_array
 import gleam/crypto
 import gleam/dict.{type Dict}
@@ -9,7 +10,6 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
-import birl
 
 // TYPES -----------------------------------------------------------------------
 
@@ -739,19 +739,34 @@ fn get_signature(data: String, algorithm: Algorithm, secret: String) -> String {
 fn parts(
   jwt_string: String,
 ) -> Result(#(Header, Payload, Option(String)), JwtDecodeError) {
-  let jwt_parts = string.split(jwt_string, ".")
+  let #(maybe_header, maybe_payload, maybe_signature) =
+    string.split(jwt_string, ".")
+    |> list.take(3)
+    |> list.index_fold(
+      #(Error(Nil), Error(Nil), Error(Nil)),
+      fn(acc, part, index) {
+        let #(header, payload, signature) = acc
+
+        case index {
+          0 -> #(Ok(part), payload, signature)
+          1 -> #(header, Ok(part), signature)
+          2 -> #(header, payload, Ok(part))
+          _ -> acc
+        }
+      },
+    )
 
   let signature =
-    list.at(jwt_parts, 2)
+    maybe_signature
     |> option.from_result()
 
   use encoded_payload <- result.try(
-    list.at(jwt_parts, 1)
+    maybe_payload
     |> result.replace_error(MissingPayload),
   )
 
   use encoded_header <- result.try(
-    list.at(jwt_parts, 0)
+    maybe_header
     |> result.replace_error(MissingHeader),
   )
   use header_data <- result.try(
