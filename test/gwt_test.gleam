@@ -1,8 +1,9 @@
+import birl
+import gleam/dynamic
+import gleam/json
 import gleeunit
 import gleeunit/should
-import gleam/dynamic
 import gwt
-import birl
 
 const signing_secret = "gleam"
 
@@ -136,4 +137,23 @@ pub fn nbf_jwt_test() {
   |> gwt.to_signed_string(gwt.HS256, signing_secret)
   |> gwt.from_signed_string(signing_secret)
   |> should.be_ok()
+}
+
+pub fn custom_payload_test() {
+  let user_data = json.object([#("age", json.int(27))])
+
+  let assert Ok(jwt) =
+    gwt.new()
+    |> gwt.set_payload_claim("email", json.string("lucy@gleam.run"))
+    |> gwt.set_payload_claim("data", user_data)
+    |> gwt.to_string()
+    |> gwt.from_string()
+
+  jwt
+  |> gwt.get_payload_claim("email", dynamic.string)
+  |> should.equal(Ok("lucy@gleam.run"))
+
+  jwt
+  |> gwt.get_payload_claim("data", dynamic.field("age", dynamic.int))
+  |> should.equal(Ok(27))
 }

@@ -5,7 +5,7 @@ mkShell {
       nodejs_18
       helix
       gleam
-      erlang
+      erlang_27
       rebar3
       cheat
       bat
