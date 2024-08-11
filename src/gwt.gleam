@@ -21,21 +21,21 @@ pub type Verified
 ///
 pub type Unverified
 
-type Payload =
-  Dict(String, Dynamic)
-
-type Header =
-  Dict(String, Dynamic)
-
+/// The intermediate representation of a JWT before being encoded to a `String`.
 ///
 pub opaque type JwtBuilder {
   JwtBuilder(header: Dict(String, Json), payload: Dict(String, Json))
 }
 
+/// A decoded JWT that can be read. The phantom type `status` indicated if it's 
+/// signature was verified or not.
+///
 pub opaque type Jwt(status) {
-  Jwt(header: Header, payload: Payload)
+  Jwt(header: Dict(String, Dynamic), payload: Dict(String, Dynamic))
 }
 
+/// Errors that can occur when attempting to decode a JWT from a String or read
+/// from a successfully decoded JWT string.
 ///
 pub type JwtDecodeError {
   MissingHeader
@@ -82,7 +82,7 @@ pub type Algorithm {
 
 // CONSTRUCTORS ----------------------------------------------------------------
 
-/// Creates an [Unverified](#Unverified) Jwt with an empty payload and a header that only 
+/// Creates a JwtBuilder with an empty payload and a header that only 
 /// contains the cliams `"typ": "JWT"`, and `"alg": "none"`.
 ///
 /// ```gleam
@@ -402,7 +402,7 @@ pub fn get_payload_claim(
   |> result.map_error(fn(e) { InvalidClaim(e) })
 }
 
-/// Set the iss claim of a payload, and changing the JWT to unverified.
+/// Set the iss claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -419,7 +419,7 @@ pub fn set_issuer(jwt: JwtBuilder, to iss: String) -> JwtBuilder {
   JwtBuilder(jwt.header, payload: new_payload)
 }
 
-/// Set the sub claim of a payload, and changing the JWT to unverified.
+/// Set the sub claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -436,7 +436,7 @@ pub fn set_subject(jwt: JwtBuilder, to sub: String) -> JwtBuilder {
   JwtBuilder(jwt.header, payload:)
 }
 
-/// Set the aud claim of a payload, and changing the JWT to unverified.
+/// Set the aud claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -453,7 +453,7 @@ pub fn set_audience(jwt: JwtBuilder, to aud: String) -> JwtBuilder {
   JwtBuilder(jwt.header, payload:)
 }
 
-/// Set the exp claim of a payload, and changing the JWT to unverified.
+/// Set the exp claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -473,7 +473,7 @@ pub fn set_expiration(jwt: JwtBuilder, to exp: Int) -> JwtBuilder {
   JwtBuilder(jwt.header, payload:)
 }
 
-/// Set the nbf claim of a payload, and changing the JWT to unverified.
+/// Set the nbf claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -493,7 +493,7 @@ pub fn set_not_before(jwt: JwtBuilder, to nbf: Int) -> JwtBuilder {
   JwtBuilder(jwt.header, payload:)
 }
 
-/// Set the nbf claim of a payload, and changing the JWT to unverified.
+/// Set the nbf claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -511,7 +511,7 @@ pub fn set_issued_at(jwt: JwtBuilder, to iat: Int) -> JwtBuilder {
   JwtBuilder(jwt.header, payload:)
 }
 
-/// Set the jti claim of a payload, and changing the JWT to unverified.
+/// Set the jti claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -529,7 +529,7 @@ pub fn set_jwt_id(jwt: JwtBuilder, to jti: String) -> JwtBuilder {
   JwtBuilder(jwt.header, payload:)
 }
 
-/// Set a custom payload claim to a given JSON value, and changing the JWT to unverified.
+/// Set a custom payload claim to a given JSON value.
 ///
 /// ```gleam
 /// import gleam/json
@@ -553,7 +553,7 @@ pub fn set_payload_claim(
 
 // HEADER ----------------------------------------------------------------------
 
-/// Set a custom header claim to a given JSON value, and changing the JWT to unverified.
+/// Set a custom header claim to a given JSON value.
 ///
 /// ```gleam
 /// import gleam/json
@@ -774,7 +774,9 @@ fn parts(
   Ok(#(header, payload, signature))
 }
 
-fn ensure_valid_expiration(payload: Payload) -> Result(Nil, JwtDecodeError) {
+fn ensure_valid_expiration(
+  payload: Dict(String, Dynamic),
+) -> Result(Nil, JwtDecodeError) {
   let exp = {
     use exp <- result.try(
       dict.get(payload, "exp")
@@ -804,7 +806,9 @@ fn ensure_valid_expiration(payload: Payload) -> Result(Nil, JwtDecodeError) {
   }
 }
 
-fn ensure_valid_not_before(payload: Payload) -> Result(Nil, JwtDecodeError) {
+fn ensure_valid_not_before(
+  payload: Dict(String, Dynamic),
+) -> Result(Nil, JwtDecodeError) {
   let nbf = {
     use nbf <- result.try(
       dict.get(payload, "nbf")
@@ -834,7 +838,9 @@ fn ensure_valid_not_before(payload: Payload) -> Result(Nil, JwtDecodeError) {
   }
 }
 
-fn ensure_valid_alg(header: Header) -> Result(String, JwtDecodeError) {
+fn ensure_valid_alg(
+  header: Dict(String, Dynamic),
+) -> Result(String, JwtDecodeError) {
   use alg <- result.try(
     dict.get(header, "alg")
     |> result.replace_error(NoAlg),

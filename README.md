@@ -11,7 +11,7 @@ Encode and decode JWTs.
 import gwt.{type Jwt, type Verified, type Unverified}
 
 pub fn main() {
-  let jwt = 
+  let jwt_builder = 
     gwt.new()
     |> gwt.set_subject("1234567890")
     |> gwt.set_audience("0987654321")
