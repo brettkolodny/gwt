@@ -493,7 +493,7 @@ pub fn set_not_before(jwt: JwtBuilder, to nbf: Int) -> JwtBuilder {
   JwtBuilder(jwt.header, payload:)
 }
 
-/// Set the nbf claim of a payload.
+/// Set the iat claim of a payload.
 ///
 /// ```gleam
 /// import gwt
@@ -501,7 +501,7 @@ pub fn set_not_before(jwt: JwtBuilder, to nbf: Int) -> JwtBuilder {
 /// 
 /// fn example() {
 ///   gwt.new()
-///   |> gwt.set_not_before(birl.to_unix(birl.now()))
+///   |> gwt.set_issued_at(birl.to_unix(birl.now()))
 /// }
 /// ``` 
 ///
