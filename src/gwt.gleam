@@ -609,7 +609,7 @@ pub fn get_header_claim(
 
   claim_value
   |> decoder()
-  |> result.nil_error()
+  |> result.replace_error(Nil)
 }
 
 // ENCODER ---------------------------------------------------------------------
