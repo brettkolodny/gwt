@@ -6,7 +6,7 @@ repository = { type = "github", user = "brettkolodny", repo = "gwt" }
 
 [dependencies]
 gleam_stdlib = "~> 0.34 or ~> 1.0"
-gleam_json = "~> 1.0"
+gleam_json = "~> 2.3.0"
 gleam_crypto = "~> 1.3"
 birl = "~> 1.7"
 
