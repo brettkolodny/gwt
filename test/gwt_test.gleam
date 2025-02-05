@@ -1,5 +1,5 @@
 import birl
-import gleam/dynamic
+import gleam/dynamic/decode
 import gleam/json
 import gleeunit
 import gleeunit/should
@@ -32,11 +32,11 @@ pub fn encode_decode_unsigned_jwt_test() {
   |> should.equal(Ok("1234567890"))
 
   jwt
-  |> gwt.get_payload_claim("aud", dynamic.string)
+  |> gwt.get_payload_claim("aud", decode.string)
   |> should.equal(Ok("0987654321"))
 
   jwt
-  |> gwt.get_payload_claim("iss", dynamic.string)
+  |> gwt.get_payload_claim("iss", decode.string)
   |> should.equal(Error(gwt.MissingClaim))
 }
 
@@ -63,11 +63,11 @@ pub fn encode_decode_signed_jwt_test() {
   |> should.equal(Ok("1234567890"))
 
   jwt
-  |> gwt.get_payload_claim("aud", dynamic.string)
+  |> gwt.get_payload_claim("aud", decode.string)
   |> should.equal(Ok("0987654321"))
 
   jwt
-  |> gwt.get_payload_claim("iss", dynamic.string)
+  |> gwt.get_payload_claim("iss", decode.string)
   |> should.equal(Error(gwt.MissingClaim))
 
   let jwt =
@@ -150,10 +150,15 @@ pub fn custom_payload_test() {
     |> gwt.from_string()
 
   jwt
-  |> gwt.get_payload_claim("email", dynamic.string)
+  |> gwt.get_payload_claim("email", decode.string)
   |> should.equal(Ok("lucy@gleam.run"))
 
+  let data_decoder = {
+    use age <- decode.field("age", decode.int)
+    decode.success(age)
+  }
+
   jwt
-  |> gwt.get_payload_claim("data", dynamic.field("age", dynamic.int))
+  |> gwt.get_payload_claim("data", data_decoder)
   |> should.equal(Ok(27))
 }

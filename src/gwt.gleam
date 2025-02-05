@@ -4,7 +4,8 @@ import birl
 import gleam/bit_array
 import gleam/crypto
 import gleam/dict.{type Dict}
-import gleam/dynamic.{type DecodeError, type Dynamic}
+import gleam/dynamic
+import gleam/dynamic/decode.{type DecodeError, type Decoder, type Dynamic}
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -199,7 +200,7 @@ pub fn from_signed_string(
 /// ```
 ///
 pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "iss", dynamic.string)
+  get_payload_claim(jwt, "iss", decode.string)
 }
 
 /// Retrieve the sub from the JWT's payload.
@@ -226,7 +227,7 @@ pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 /// ```
 ///
 pub fn get_subject(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "sub", dynamic.string)
+  get_payload_claim(jwt, "sub", decode.string)
 }
 
 /// Retrieve the aud from the JWT's payload.
@@ -253,7 +254,7 @@ pub fn get_subject(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 /// ```
 ///
 pub fn get_audience(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "aud", dynamic.string)
+  get_payload_claim(jwt, "aud", decode.string)
 }
 
 /// Retrieve the jti from the JWT's payload.
@@ -280,7 +281,7 @@ pub fn get_audience(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 /// ```
 ///
 pub fn get_jwt_id(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "jti", dynamic.string)
+  get_payload_claim(jwt, "jti", decode.string)
 }
 
 /// Retrieve the iat from the JWT's payload.
@@ -307,7 +308,7 @@ pub fn get_jwt_id(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 /// ```
 ///
 pub fn get_issued_at(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
-  get_payload_claim(jwt, "iat", dynamic.int)
+  get_payload_claim(jwt, "iat", decode.int)
 }
 
 /// Retrieve the nbf from the JWT's payload.
@@ -334,7 +335,7 @@ pub fn get_issued_at(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
 /// ```
 ///
 pub fn get_not_before(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
-  get_payload_claim(jwt, "nbf", dynamic.int)
+  get_payload_claim(jwt, "nbf", decode.int)
 }
 
 /// Retrieve the exp from the JWT's payload.
@@ -361,7 +362,7 @@ pub fn get_not_before(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
 /// ```
 ///
 pub fn get_expiration(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
-  get_payload_claim(jwt, "exp", dynamic.int)
+  get_payload_claim(jwt, "exp", decode.int)
 }
 
 /// Retrieve and decode a claim from a JWT's payload.
@@ -371,7 +372,7 @@ pub fn get_expiration(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
 /// ```gleam
 /// import gwt
 /// import gleam/json
-/// import gleam/dynamic
+/// import gleam/dynamic/decode
 ///
 /// fn example() {
 ///   let jwt_with_custom_claim =
@@ -379,17 +380,17 @@ pub fn get_expiration(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
 ///     |> gwt.set_payload_claim("gleam", json.string("lucy"))
 ///
 ///   let assert Ok("lucy") =
-///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.string)
+///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", decode.string)
 ///
 ///   let assert Error(MissingClaim) =
-///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.int)
+///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", decode.int)
 /// }
 /// ```
 ///
 pub fn get_payload_claim(
   from jwt: Jwt(status),
   claim claim: String,
-  decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
+  decoder decoder: Decoder(a),
 ) -> Result(a, JwtDecodeError) {
   use claim_value <- result.try(
     jwt.payload
@@ -397,8 +398,7 @@ pub fn get_payload_claim(
     |> result.replace_error(MissingClaim),
   )
 
-  claim_value
-  |> decoder()
+  decode.run(claim_value, decoder)
   |> result.map_error(fn(e) { InvalidClaim(e) })
 }
 
@@ -600,7 +600,7 @@ pub fn set_header_claim(
 pub fn get_header_claim(
   from jwt: Jwt(status),
   claim claim: String,
-  decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
+  decoder decoder: fn(Dynamic) -> Result(a, List(DecodeError)),
 ) -> Result(a, Nil) {
   use claim_value <- result.try(
     jwt.header
@@ -748,7 +748,7 @@ fn parts(
     |> result.replace_error(InvalidHeader),
   )
   use header <- result.try(
-    json.decode(header_string, dynamic.dict(dynamic.string, dynamic.dynamic))
+    json.parse(header_string, decode.dict(decode.string, decode.dynamic))
     |> result.replace_error(InvalidHeader),
   )
 
@@ -762,7 +762,7 @@ fn parts(
     |> result.replace_error(InvalidPayload),
   )
   use payload <- result.try(
-    json.decode(payload_string, dynamic.dict(dynamic.string, dynamic.dynamic))
+    json.parse(payload_string, decode.dict(decode.string, decode.dynamic))
     |> result.replace_error(InvalidPayload),
   )
 
@@ -783,7 +783,7 @@ fn ensure_valid_expiration(
       |> result.or(Ok(dynamic.from(-1)))
       |> result.replace_error(InvalidHeader),
     )
-    dynamic.int(exp)
+    decode.run(exp, decode.int)
     |> result.replace_error(InvalidHeader)
   }
   use exp <- result.try(exp)
@@ -815,7 +815,7 @@ fn ensure_valid_not_before(
       |> result.or(Ok(dynamic.from(-1)))
       |> result.replace_error(InvalidHeader),
     )
-    dynamic.int(nbf)
+    decode.run(nbf, decode.int)
     |> result.replace_error(InvalidHeader)
   }
   use nbf <- result.try(nbf)
@@ -847,6 +847,6 @@ fn ensure_valid_alg(
   )
 
   alg
-  |> dynamic.string()
+  |> decode.run(decode.string)
   |> result.replace_error(InvalidAlg)
 }
