@@ -4,7 +4,8 @@ import birl
 import gleam/bit_array
 import gleam/crypto
 import gleam/dict.{type Dict}
-import gleam/dynamic.{type DecodeError, type Dynamic}
+import gleam/dynamic
+import gleam/dynamic/decode.{type DecodeError, type Decoder, type Dynamic}
 import gleam/json.{type Json}
 import gleam/list
 import gleam/option.{type Option, None, Some}
@@ -27,7 +28,7 @@ pub opaque type JwtBuilder {
   JwtBuilder(header: Dict(String, Json), payload: Dict(String, Json))
 }
 
-/// A decoded JWT that can be read. The phantom type `status` indicated if it's 
+/// A decoded JWT that can be read. The phantom type `status` indicated if it's
 /// signature was verified or not.
 ///
 pub opaque type Jwt(status) {
@@ -82,12 +83,12 @@ pub type Algorithm {
 
 // CONSTRUCTORS ----------------------------------------------------------------
 
-/// Creates a JwtBuilder with an empty payload and a header that only 
+/// Creates a JwtBuilder with an empty payload and a header that only
 /// contains the cliams `"typ": "JWT"`, and `"alg": "none"`.
 ///
 /// ```gleam
 /// import gwt.{type Jwt, type Unverified}
-/// 
+///
 /// fn example() -> JwtBuilder {
 ///   gwt.new()
 /// }
@@ -104,12 +105,12 @@ pub fn new() -> JwtBuilder {
 }
 
 /// Decode a JWT string into an unverified [Jwt](#Jwt).
-/// 
+///
 /// Returns `Ok(JwtBuilder)` if it is a valid JWT, and `Error(JwtDecodeError)` otherwise.
 ///
 /// ```gleam
 /// import gwt.{type Jwt, type Unverified, type JwtDecodeError}
-/// 
+///
 /// fn example(jwt_string: String) -> Result(JwtBuilder, JwtDecodeError) {
 ///   gwt.from_string(jwt_string)
 /// }
@@ -123,7 +124,7 @@ pub fn from_string(
 }
 
 /// Decode a signed JWT string into a verified [Jwt](#Jwt).
-/// 
+///
 /// Returns `Ok(JwtBuilder)` if it is a valid JWT and the JWT's signature is successfully verified,
 /// and `Error(JwtDecodeError)` otherwise.
 ///
@@ -132,7 +133,7 @@ pub fn from_string(
 ///
 /// ```gleam
 /// import gwt.{type Jwt, type Verified, type JwtDecodeError}
-/// 
+///
 /// fn example(jwt_string: String) -> Result(Jwt(Verified), JwtDecodeError) {
 ///   gwt.from_signed_string(jwt_string, "some secret")
 /// }
@@ -184,22 +185,22 @@ pub fn from_signed_string(
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example()  {
-///   let jwt_with_iss = 
+///   let jwt_with_iss =
 ///     gwt.new()
 ///     |> jwt.set_issuer("gleam")
-/// 
+///
 ///   let assert Ok(issuer) = gwt.get_issuer(jwt_with_iss)
-/// 
+///
 ///   let jwt_without_iss = gwt.new()
-/// 
+///
 ///   let assert Error(MissingClaim) = gwt.get_issuer(jwt_without_iss)
 /// }
 /// ```
 ///
 pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "iss", dynamic.string)
+  get_payload_claim(jwt, "iss", decode.string)
 }
 
 /// Retrieve the sub from the JWT's payload.
@@ -211,22 +212,22 @@ pub fn get_issuer(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example()  {
-///   let jwt_with_sub = 
+///   let jwt_with_sub =
 ///     gwt.new()
 ///     |> jwt.set_subject("gleam")
-/// 
+///
 ///   let assert Ok(subject) = gwt.get_issuer(jwt_with_sub)
-/// 
+///
 ///   let jwt_without_sub = gwt.new()
-/// 
+///
 ///   let assert Error(MissingClaim) = gwt.get_subject(jwt_without_sub)
 /// }
 /// ```
 ///
 pub fn get_subject(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "sub", dynamic.string)
+  get_payload_claim(jwt, "sub", decode.string)
 }
 
 /// Retrieve the aud from the JWT's payload.
@@ -238,22 +239,22 @@ pub fn get_subject(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example()  {
-///   let jwt_with_aud = 
+///   let jwt_with_aud =
 ///     gwt.new()
 ///     |> jwt.set_audience("gleam")
-/// 
+///
 ///   let assert Ok(audience) = gwt.get_audience(jwt_with_aud)
-/// 
+///
 ///   let jwt_without_aud = gwt.new()
-/// 
+///
 ///   let assert Error(MissingClaim) = gwt.get_audience(jwt_without_aud)
 /// }
 /// ```
 ///
 pub fn get_audience(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "aud", dynamic.string)
+  get_payload_claim(jwt, "aud", decode.string)
 }
 
 /// Retrieve the jti from the JWT's payload.
@@ -265,22 +266,22 @@ pub fn get_audience(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example()  {
-///   let jwt_with_jti = 
+///   let jwt_with_jti =
 ///     gwt.new()
 ///     |> jwt.set_jwt_id("gleam")
-/// 
+///
 ///   let assert Ok(jwt_id) = gwt.get_jwt_id(jwt_with_jti)
-/// 
+///
 ///   let jwt_without_jti = gwt.new()
-/// 
+///
 ///   let assert Error(MissingClaim) = gwt.get_jwt_id(jwt_without_jti)
 /// }
 /// ```
 ///
 pub fn get_jwt_id(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
-  get_payload_claim(jwt, "jti", dynamic.string)
+  get_payload_claim(jwt, "jti", decode.string)
 }
 
 /// Retrieve the iat from the JWT's payload.
@@ -292,22 +293,22 @@ pub fn get_jwt_id(from jwt: Jwt(status)) -> Result(String, JwtDecodeError) {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example()  {
-///   let jwt_with_iat = 
+///   let jwt_with_iat =
 ///     gwt.new()
 ///     |> jwt.set_issued_at("gleam")
-/// 
+///
 ///   let assert Ok(issued_at) = gwt.get_issued_at(jwt_with_iat)
-/// 
+///
 ///   let jwt_without_iat = gwt.new()
-/// 
+///
 ///   let assert Error(MissingClaim) = gwt.get_issued_at(jwt_without_iat)
 /// }
 /// ```
 ///
 pub fn get_issued_at(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
-  get_payload_claim(jwt, "iat", dynamic.int)
+  get_payload_claim(jwt, "iat", decode.int)
 }
 
 /// Retrieve the nbf from the JWT's payload.
@@ -319,22 +320,22 @@ pub fn get_issued_at(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example()  {
-///   let jwt_with_sub = 
+///   let jwt_with_sub =
 ///     gwt.new()
 ///     |> jwt.set_not_before("gleam")
-/// 
+///
 ///   let assert Ok(not_before) = gwt.get_not_before(jwt_with_nbf)
-/// 
+///
 ///   let jwt_without_nbf = gwt.new()
-/// 
+///
 ///   let assert Error(MissingClaim) = gwt.get_not_before(jwt_without_nbf)
 /// }
 /// ```
 ///
 pub fn get_not_before(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
-  get_payload_claim(jwt, "nbf", dynamic.int)
+  get_payload_claim(jwt, "nbf", decode.int)
 }
 
 /// Retrieve the exp from the JWT's payload.
@@ -346,22 +347,22 @@ pub fn get_not_before(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example()  {
-///   let jwt_with_exp = 
+///   let jwt_with_exp =
 ///     gwt.new()
 ///     |> jwt.set_not_before("gleam")
-/// 
+///
 ///   let assert Ok(expiration) = gwt.get_not_before(jwt_with_exp)
-/// 
+///
 ///   let jwt_without_exp = gwt.new()
-/// 
+///
 ///   let assert Error(MissingClaim) = gwt.get_not_before(jwt_without_exp)
 /// }
 /// ```
 ///
 pub fn get_expiration(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
-  get_payload_claim(jwt, "exp", dynamic.int)
+  get_payload_claim(jwt, "exp", decode.int)
 }
 
 /// Retrieve and decode a claim from a JWT's payload.
@@ -371,25 +372,25 @@ pub fn get_expiration(from jwt: Jwt(status)) -> Result(Int, JwtDecodeError) {
 /// ```gleam
 /// import gwt
 /// import gleam/json
-/// import gleam/dynamic
-/// 
+/// import gleam/dynamic/decode
+///
 /// fn example() {
 ///   let jwt_with_custom_claim =
 ///     gwt.new()
 ///     |> gwt.set_payload_claim("gleam", json.string("lucy"))
-/// 
+///
 ///   let assert Ok("lucy") =
-///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.string)
-/// 
+///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", decode.string)
+///
 ///   let assert Error(MissingClaim) =
-///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", dynamic.int)
+///     gwt.get_payload_claim(jwt_with_custom_claim, "gleam", decode.int)
 /// }
 /// ```
 ///
 pub fn get_payload_claim(
   from jwt: Jwt(status),
   claim claim: String,
-  decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
+  decoder decoder: Decoder(a),
 ) -> Result(a, JwtDecodeError) {
   use claim_value <- result.try(
     jwt.payload
@@ -397,8 +398,7 @@ pub fn get_payload_claim(
     |> result.replace_error(MissingClaim),
   )
 
-  claim_value
-  |> decoder()
+  decode.run(claim_value, decoder)
   |> result.map_error(fn(e) { InvalidClaim(e) })
 }
 
@@ -406,12 +406,12 @@ pub fn get_payload_claim(
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_issuer("gleam")
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_issuer(jwt: JwtBuilder, to iss: String) -> JwtBuilder {
   let new_payload = dict.insert(jwt.payload, "iss", json.string(iss))
@@ -423,12 +423,12 @@ pub fn set_issuer(jwt: JwtBuilder, to iss: String) -> JwtBuilder {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_subject("gleam")
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_subject(jwt: JwtBuilder, to sub: String) -> JwtBuilder {
   let payload = dict.insert(jwt.payload, "sub", json.string(sub))
@@ -440,12 +440,12 @@ pub fn set_subject(jwt: JwtBuilder, to sub: String) -> JwtBuilder {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_audience("gleam")
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_audience(jwt: JwtBuilder, to aud: String) -> JwtBuilder {
   let payload = dict.insert(jwt.payload, "aud", json.string(aud))
@@ -458,14 +458,14 @@ pub fn set_audience(jwt: JwtBuilder, to aud: String) -> JwtBuilder {
 /// ```gleam
 /// import gwt
 /// import birl
-/// 
+///
 /// fn example() {
 ///   let five_minutes = birl.to_unix(birl.now()) + 300
-/// 
+///
 ///   gwt.new()
 ///   |> gwt.set_expiration(five_minutes)
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_expiration(jwt: JwtBuilder, to exp: Int) -> JwtBuilder {
   let payload = dict.insert(jwt.payload, "exp", json.int(exp))
@@ -478,14 +478,14 @@ pub fn set_expiration(jwt: JwtBuilder, to exp: Int) -> JwtBuilder {
 /// ```gleam
 /// import gwt
 /// import birl
-/// 
+///
 /// fn example() {
 ///   let five_minutes = birl.to_unix(birl.now()) + 300
-/// 
+///
 ///   gwt.new()
 ///   |> gwt.set_not_before(five_minutes)
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_not_before(jwt: JwtBuilder, to nbf: Int) -> JwtBuilder {
   let payload = dict.insert(jwt.payload, "nbf", json.int(nbf))
@@ -498,12 +498,12 @@ pub fn set_not_before(jwt: JwtBuilder, to nbf: Int) -> JwtBuilder {
 /// ```gleam
 /// import gwt
 /// import birl
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_issued_at(birl.to_unix(birl.now()))
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_issued_at(jwt: JwtBuilder, to iat: Int) -> JwtBuilder {
   let payload = dict.insert(jwt.payload, "iat", json.int(iat))
@@ -516,12 +516,12 @@ pub fn set_issued_at(jwt: JwtBuilder, to iat: Int) -> JwtBuilder {
 /// ```gleam
 /// import gwt
 /// import birl
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_jwt_id("gleam")
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_jwt_id(jwt: JwtBuilder, to jti: String) -> JwtBuilder {
   let payload = dict.insert(jwt.payload, "jti", json.string(jti))
@@ -534,12 +534,12 @@ pub fn set_jwt_id(jwt: JwtBuilder, to jti: String) -> JwtBuilder {
 /// ```gleam
 /// import gleam/json
 /// import gwt
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_payload_claim("gleam", json.string("lucy"))
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_payload_claim(
   jwt: JwtBuilder,
@@ -558,12 +558,12 @@ pub fn set_payload_claim(
 /// ```gleam
 /// import gleam/json
 /// import gwt
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_header_claim("gleam", json.string("lucy"))
 /// }
-/// ``` 
+/// ```
 ///
 pub fn set_header_claim(
   jwt: JwtBuilder,
@@ -583,15 +583,15 @@ pub fn set_header_claim(
 /// import gwt
 /// import gleam/json
 /// import gleam/dynamic
-/// 
+///
 /// fn example() {
 ///   let jwt_with_custom_claim =
 ///     gwt.new()
 ///     |> gwt.set_header_claim("gleam", json.string("lucy"))
-/// 
+///
 ///   let assert Ok("lucy") =
 ///     gwt.get_header_claim(jwt_with_custom_claim, "gleam", dynamic.string)
-/// 
+///
 ///   let assert Error(MissingClaim) =
 ///     gwt.get_header_claim(jwt_with_custom_claim, "gleam", dynamic.int)
 /// }
@@ -600,7 +600,7 @@ pub fn set_header_claim(
 pub fn get_header_claim(
   from jwt: Jwt(status),
   claim claim: String,
-  decoder decoder: fn(Dynamic) -> Result(a, List(dynamic.DecodeError)),
+  decoder decoder: fn(Dynamic) -> Result(a, List(DecodeError)),
 ) -> Result(a, Nil) {
   use claim_value <- result.try(
     jwt.header
@@ -609,7 +609,7 @@ pub fn get_header_claim(
 
   claim_value
   |> decoder()
-  |> result.nil_error()
+  |> result.replace_error(Nil)
 }
 
 // ENCODER ---------------------------------------------------------------------
@@ -618,13 +618,13 @@ pub fn get_header_claim(
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_issuer("gleam")
 ///   |> gwt.to_string()
 /// }
-/// ``` 
+/// ```
 ///
 pub fn to_string(jwt: JwtBuilder) -> String {
   let JwtBuilder(header, payload) = jwt
@@ -650,13 +650,13 @@ pub fn to_string(jwt: JwtBuilder) -> String {
 ///
 /// ```gleam
 /// import gwt
-/// 
+///
 /// fn example() {
 ///   gwt.new()
 ///   |> gwt.set_issuer("gleam")
 ///   |> gwt.to_signed_string(gwt.HS256, "lucy")
 /// }
-/// ``` 
+/// ```
 ///
 pub fn to_signed_string(
   jwt: JwtBuilder,
@@ -738,9 +738,10 @@ fn parts(
 ) {
   let parts = string.split(jwt_string, ".")
 
-  use #(encoded_header, parts) <- result.try(
-    list.pop(parts, fn(_) { True }) |> result.replace_error(MissingHeader),
+  use encoded_header <- result.try(
+    list.first(parts) |> result.replace_error(MissingHeader),
   )
+  let parts = list.drop(parts, 1)
   use header_string <- result.try(
     encoded_header
     |> bit_array.base64_url_decode()
@@ -748,13 +749,14 @@ fn parts(
     |> result.replace_error(InvalidHeader),
   )
   use header <- result.try(
-    json.decode(header_string, dynamic.dict(dynamic.string, dynamic.dynamic))
+    json.parse(header_string, decode.dict(decode.string, decode.dynamic))
     |> result.replace_error(InvalidHeader),
   )
 
-  use #(encoded_payload, parts) <- result.try(
-    list.pop(parts, fn(_) { True }) |> result.replace_error(MissingPayload),
+  use encoded_payload <- result.try(
+    list.first(parts) |> result.replace_error(MissingPayload),
   )
+  let parts = list.drop(parts, 1)
   use payload_string <- result.try(
     encoded_payload
     |> bit_array.base64_url_decode()
@@ -762,7 +764,7 @@ fn parts(
     |> result.replace_error(InvalidPayload),
   )
   use payload <- result.try(
-    json.decode(payload_string, dynamic.dict(dynamic.string, dynamic.dynamic))
+    json.parse(payload_string, decode.dict(decode.string, decode.dynamic))
     |> result.replace_error(InvalidPayload),
   )
 
@@ -783,7 +785,7 @@ fn ensure_valid_expiration(
       |> result.or(Ok(dynamic.from(-1)))
       |> result.replace_error(InvalidHeader),
     )
-    dynamic.int(exp)
+    decode.run(exp, decode.int)
     |> result.replace_error(InvalidHeader)
   }
   use exp <- result.try(exp)
@@ -815,7 +817,7 @@ fn ensure_valid_not_before(
       |> result.or(Ok(dynamic.from(-1)))
       |> result.replace_error(InvalidHeader),
     )
-    dynamic.int(nbf)
+    decode.run(nbf, decode.int)
     |> result.replace_error(InvalidHeader)
   }
   use nbf <- result.try(nbf)
@@ -847,6 +849,6 @@ fn ensure_valid_alg(
   )
 
   alg
-  |> dynamic.string()
+  |> decode.run(decode.string)
   |> result.replace_error(InvalidAlg)
 }

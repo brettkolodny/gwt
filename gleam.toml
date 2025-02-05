@@ -1,14 +1,14 @@
 name = "gwt"
-version = "1.0.0"
+version = "2.0.0"
 description = "A JWT library written in Gleam"
 licences = ["Apache-2.0"]
 repository = { type = "github", user = "brettkolodny", repo = "gwt" }
 
 [dependencies]
-gleam_stdlib = "~> 0.34 or ~> 1.0"
-gleam_json = "~> 1.0"
-gleam_crypto = "~> 1.3"
-birl = "~> 1.7"
+gleam_stdlib = ">= 0.34.0 and < 2.0.0"
+gleam_json = ">= 1.0.0 and < 3.0.0"
+gleam_crypto = ">= 1.3.0 and < 2.0.0"
+birl = ">= 1.7.0 and < 2.0.0"
 
 [dev-dependencies]
-gleeunit = "~> 1.0"
+gleeunit = ">= 1.0.0 and < 2.0.0"
