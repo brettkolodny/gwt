@@ -738,9 +738,10 @@ fn parts(
 ) {
   let parts = string.split(jwt_string, ".")
 
-  use #(encoded_header, parts) <- result.try(
-    list.pop(parts, fn(_) { True }) |> result.replace_error(MissingHeader),
+  use encoded_header <- result.try(
+    list.first(parts) |> result.replace_error(MissingHeader),
   )
+  let parts = list.drop(parts, 1)
   use header_string <- result.try(
     encoded_header
     |> bit_array.base64_url_decode()
@@ -752,9 +753,10 @@ fn parts(
     |> result.replace_error(InvalidHeader),
   )
 
-  use #(encoded_payload, parts) <- result.try(
-    list.pop(parts, fn(_) { True }) |> result.replace_error(MissingPayload),
+  use encoded_payload <- result.try(
+    list.first(parts) |> result.replace_error(MissingPayload),
   )
+  let parts = list.drop(parts, 1)
   use payload_string <- result.try(
     encoded_payload
     |> bit_array.base64_url_decode()
