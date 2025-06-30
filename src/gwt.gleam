@@ -782,7 +782,7 @@ fn ensure_valid_expiration(
   let exp = {
     use exp <- result.try(
       dict.get(payload, "exp")
-      |> result.or(Ok(dynamic.from(-1)))
+      |> result.or(Ok(dynamic.int(-1)))
       |> result.replace_error(InvalidHeader),
     )
     decode.run(exp, decode.int)
@@ -814,7 +814,7 @@ fn ensure_valid_not_before(
   let nbf = {
     use nbf <- result.try(
       dict.get(payload, "nbf")
-      |> result.or(Ok(dynamic.from(-1)))
+      |> result.or(Ok(dynamic.int(-1)))
       |> result.replace_error(InvalidHeader),
     )
     decode.run(nbf, decode.int)
