@@ -163,7 +163,12 @@ pub fn from_signed_string(
 
       let sig =
         get_signature(encoded_header <> "." <> encoded_payload, alg, secret)
-      case sig == signature {
+      case
+        crypto.secure_compare(
+          bit_array.from_string(sig),
+          bit_array.from_string(signature),
+        )
+      {
         True -> {
           Ok(Jwt(header: header, payload: payload))
         }
