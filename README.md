@@ -28,7 +28,7 @@ pub fn main() {
 
   let assert Ok(verified_jwt) =
     jwt_with_signature
-    |>gwt.from_signed_string("lucy")
+    |> gwt.from_signed_string("lucy")
 }
 ```
 
