@@ -2,7 +2,6 @@
 
 import birl
 import gleam/bit_array
-import gleam/crypto
 import gleam/dict.{type Dict}
 import gleam/dynamic
 import gleam/dynamic/decode.{type DecodeError, type Decoder, type Dynamic}
@@ -11,6 +10,8 @@ import gleam/list
 import gleam/option.{type Option, None, Some}
 import gleam/result
 import gleam/string
+
+import gwt/utils
 
 // TYPES -----------------------------------------------------------------------
 
@@ -31,6 +32,7 @@ pub opaque type JwtBuilder {
 /// A decoded JWT that can be read. The phantom type `status` indicated if it's
 /// signature was verified or not.
 ///
+@internal
 pub opaque type Jwt(status) {
   Jwt(header: Dict(String, Dynamic), payload: Dict(String, Dynamic))
 }
@@ -68,17 +70,6 @@ pub type JwtDecodeError {
   MissingClaim
   ///
   InvalidClaim(List(DecodeError))
-}
-
-/// Available [JSON Web Algorithms](https://datatracker.ietf.org/doc/html/rfc7518#section-3.2) used for encoding and decdoing signatures in [from_signed_string](#from_signed_string) and [to_signed_string](#to_signed_string).
-///
-/// If JWT calls for a different algorithm than the ones listed here [from_signed_string](#from_signed_string) will fail
-/// with the [JwtDecodeError](#JwtDecodeError) `UnsupportedSigningAlgorithm`.
-///
-pub type Algorithm {
-  HS256
-  HS384
-  HS512
 }
 
 // CONSTRUCTORS ----------------------------------------------------------------
@@ -121,62 +112,6 @@ pub fn from_string(
 ) -> Result(Jwt(Unverified), JwtDecodeError) {
   use #(header, payload, _) <- result.try(parts(jwt_string))
   Ok(Jwt(header, payload))
-}
-
-/// Decode a signed JWT string into a verified [Jwt](#Jwt).
-///
-/// Returns `Ok(JwtBuilder)` if it is a valid JWT and the JWT's signature is successfully verified,
-/// and `Error(JwtDecodeError)` otherwise.
-///
-/// At the moment this library only supports `HS256`, `HS384`, and `HS512` hashing algorithms.
-/// if a JWT's alg claim calls for any other this function will return `Error(UnsupportedSigningAlgorithm)`.
-///
-/// ```gleam
-/// import gwt.{type Jwt, type Verified, type JwtDecodeError}
-///
-/// fn example(jwt_string: String) -> Result(Jwt(Verified), JwtDecodeError) {
-///   gwt.from_signed_string(jwt_string, "some secret")
-/// }
-/// ```
-///
-pub fn from_signed_string(
-  jwt_string: String,
-  secret: String,
-) -> Result(Jwt(Verified), JwtDecodeError) {
-  use #(header, payload, signature) <- result.try(parts(jwt_string))
-  use signature <- result.try(option.to_result(signature, MissingSignature))
-
-  use _ <- result.try(ensure_valid_expiration(payload))
-  use _ <- result.try(ensure_valid_not_before(payload))
-  use alg <- result.try(ensure_valid_alg(header))
-
-  let assert [encoded_header, encoded_payload, ..] =
-    string.split(jwt_string, ".")
-  case alg {
-    "HS256" | "HS384" | "HS512" -> {
-      let alg = case alg {
-        "HS256" -> HS256
-        "HS384" -> HS384
-        "HS512" -> HS512
-        _ -> panic as "Should not be reachable"
-      }
-
-      let sig =
-        get_signature(encoded_header <> "." <> encoded_payload, alg, secret)
-      case
-        crypto.secure_compare(
-          bit_array.from_string(sig),
-          bit_array.from_string(signature),
-        )
-      {
-        True -> {
-          Ok(Jwt(header: header, payload: payload))
-        }
-        False -> Error(InvalidSignature)
-      }
-    }
-    _ -> Error(UnsupportedSigningAlgorithm)
-  }
 }
 
 // PAYLOAD ---------------------------------------------------------------------
@@ -636,14 +571,14 @@ pub fn to_string(jwt: JwtBuilder) -> String {
 
   let header_string =
     header
-    |> dict_to_json_object()
+    |> utils.dict_to_json_object()
     |> json.to_string()
     |> bit_array.from_string()
     |> bit_array.base64_url_encode(False)
 
   let payload_string =
     payload
-    |> dict_to_json_object()
+    |> utils.dict_to_json_object()
     |> json.to_string()
     |> bit_array.from_string()
     |> bit_array.base64_url_encode(False)
@@ -651,91 +586,10 @@ pub fn to_string(jwt: JwtBuilder) -> String {
   header_string <> "." <> payload_string
 }
 
-/// Encode a [Jwt](#Jwt) to a signed String using the given [Algorithm](#Algorithm) and secret.
-///
-/// ```gleam
-/// import gwt
-///
-/// fn example() {
-///   gwt.new()
-///   |> gwt.set_issuer("gleam")
-///   |> gwt.to_signed_string(gwt.HS256, "lucy")
-/// }
-/// ```
-///
-pub fn to_signed_string(
-  jwt: JwtBuilder,
-  alg: Algorithm,
-  secret: String,
-) -> String {
-  let JwtBuilder(header:, payload:) = jwt
-
-  case alg {
-    HS256 | HS384 | HS512 -> {
-      let #(alg_string, hash_alg) = case alg {
-        HS256 -> #("HS256", crypto.Sha256)
-        HS384 -> #("HS384", crypto.Sha384)
-        HS512 -> #("HS512", crypto.Sha512)
-      }
-
-      let header = dict.insert(header, "alg", json.string(alg_string))
-
-      let header_string =
-        header
-        |> dict_to_json_object()
-        |> json.to_string()
-        |> bit_array.from_string()
-        |> bit_array.base64_url_encode(False)
-
-      let payload_string =
-        payload
-        |> dict_to_json_object()
-        |> json.to_string()
-        |> bit_array.from_string()
-        |> bit_array.base64_url_encode(False)
-
-      let jwt_body = header_string <> "." <> payload_string
-
-      let jwt_signature =
-        jwt_body
-        |> bit_array.from_string()
-        |> crypto.hmac(hash_alg, bit_array.from_string(secret))
-        |> bit_array.base64_url_encode(False)
-
-      jwt_body <> "." <> jwt_signature
-    }
-  }
-}
-
 // UTILITIES -------------------------------------------------------------------
 
-fn dict_to_json_object(d: Dict(String, Json)) -> Json {
-  let key_value_list = {
-    use acc, key, value <- dict.fold(d, [])
-    [#(key, value), ..acc]
-  }
-
-  json.object(key_value_list)
-}
-
-fn get_signature(data: String, algorithm: Algorithm, secret: String) -> String {
-  case algorithm {
-    HS256 | HS384 | HS512 -> {
-      let hash_alg = case algorithm {
-        HS256 -> crypto.Sha256
-        HS384 -> crypto.Sha384
-        HS512 -> crypto.Sha512
-      }
-
-      data
-      |> bit_array.from_string()
-      |> crypto.hmac(hash_alg, bit_array.from_string(secret))
-      |> bit_array.base64_url_encode(False)
-    }
-  }
-}
-
-fn parts(
+@internal
+pub fn parts(
   jwt_string: String,
 ) -> Result(
   #(Dict(String, Dynamic), Dict(String, Dynamic), Option(String)),
@@ -781,7 +635,8 @@ fn parts(
   Ok(#(header, payload, signature))
 }
 
-fn ensure_valid_expiration(
+@internal
+pub fn ensure_valid_expiration(
   payload: Dict(String, Dynamic),
 ) -> Result(Nil, JwtDecodeError) {
   let exp = {
@@ -813,7 +668,8 @@ fn ensure_valid_expiration(
   }
 }
 
-fn ensure_valid_not_before(
+@internal
+pub fn ensure_valid_not_before(
   payload: Dict(String, Dynamic),
 ) -> Result(Nil, JwtDecodeError) {
   let nbf = {
@@ -845,7 +701,8 @@ fn ensure_valid_not_before(
   }
 }
 
-fn ensure_valid_alg(
+@internal
+pub fn ensure_valid_alg(
   header: Dict(String, Dynamic),
 ) -> Result(String, JwtDecodeError) {
   use alg <- result.try(
@@ -856,4 +713,32 @@ fn ensure_valid_alg(
   alg
   |> decode.run(decode.string)
   |> result.replace_error(InvalidAlg)
+}
+
+@internal
+pub fn get_header_string(jwt: JwtBuilder, alg_string: String) -> String {
+  let header = dict.insert(jwt.header, "alg", json.string(alg_string))
+
+  header
+  |> utils.dict_to_json_object()
+  |> json.to_string()
+  |> bit_array.from_string()
+  |> bit_array.base64_url_encode(False)
+}
+
+@internal
+pub fn get_payload_string(jwt: JwtBuilder) -> String {
+  jwt.payload
+  |> utils.dict_to_json_object()
+  |> json.to_string()
+  |> bit_array.from_string()
+  |> bit_array.base64_url_encode(False)
+}
+
+@internal
+pub fn dangerously_set_jwt_from_header_and_payload(
+  header: Dict(String, Dynamic),
+  payload: Dict(String, Dynamic),
+) -> Jwt(a) {
+  Jwt(header:, payload:)
 }
