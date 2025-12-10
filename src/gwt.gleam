@@ -41,6 +41,9 @@ pub opaque type Jwt(status) {
 /// from a successfully decoded JWT string.
 ///
 pub type JwtDecodeError {
+  ///
+  MalformedJwt
+  /// 
   MissingHeader
   ///
   MissingPayload
@@ -66,6 +69,8 @@ pub type JwtDecodeError {
   InvalidAlg
   ///
   UnsupportedSigningAlgorithm
+  ///
+  UnexpectedAlgorithm
   ///
   MissingClaim
   ///
@@ -587,6 +592,33 @@ pub fn to_string(jwt: JwtBuilder) -> String {
 }
 
 // UTILITIES -------------------------------------------------------------------
+
+@internal
+pub fn string_parts(
+  jwt_string: String,
+) -> Result(#(String, String, Option(String)), JwtDecodeError) {
+  case string.split(jwt_string, ".") {
+    [header, payload] -> Ok(#(header, payload, None))
+    [header, payload, signature] -> Ok(#(header, payload, Some(signature)))
+    _ -> Error(MalformedJwt)
+  }
+}
+
+@internal
+pub fn part_to_dict(
+  part: String,
+  error: JwtDecodeError,
+) -> Result(Dict(String, Dynamic), JwtDecodeError) {
+  part
+  |> bit_array.base64_url_decode()
+  |> result.try(bit_array.to_string)
+  |> result.replace_error(error)
+  |> result.try(fn(str) {
+    str
+    |> json.parse(decode.dict(decode.string, decode.dynamic))
+    |> result.replace_error(error)
+  })
+}
 
 @internal
 pub fn parts(

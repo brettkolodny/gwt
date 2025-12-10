@@ -2,7 +2,6 @@ import gleam/bit_array
 import gleam/crypto
 import gleam/option
 import gleam/result
-import gleam/string
 import gwt
 
 /// Available [JSON Web Algorithms](https://datatracker.ietf.org/doc/html/rfc7518#section-3.2) used for encoding and decdoing signatures in [from_signed_string](#from_signed_string) and [to_signed_string](#to_signed_string).
@@ -76,39 +75,43 @@ pub fn from_signed_string(
   jwt_string: String,
   secret: String,
 ) -> Result(gwt.Jwt(gwt.Verified), gwt.JwtDecodeError) {
-  use #(header, payload, signature) <- result.try(gwt.parts(jwt_string))
-  use signature <- result.try(option.to_result(signature, gwt.MissingSignature))
+  use #(encoded_header, encoded_payload, maybe_signature) <- result.try(
+    gwt.string_parts(jwt_string),
+  )
+
+  use header <- result.try(gwt.part_to_dict(encoded_header, gwt.InvalidHeader))
+  use payload <- result.try(gwt.part_to_dict(
+    encoded_payload,
+    gwt.InvalidPayload,
+  ))
+  use signature <- result.try(option.to_result(
+    maybe_signature,
+    gwt.MissingSignature,
+  ))
 
   use _ <- result.try(gwt.ensure_valid_expiration(payload))
   use _ <- result.try(gwt.ensure_valid_not_before(payload))
-  use alg <- result.try(gwt.ensure_valid_alg(header))
+  use alg_string <- result.try(gwt.ensure_valid_alg(header))
 
-  let assert [encoded_header, encoded_payload, ..] =
-    string.split(jwt_string, ".")
-  case alg {
-    "HS256" | "HS384" | "HS512" -> {
-      let alg = case alg {
-        "HS256" -> HS256
-        "HS384" -> HS384
-        "HS512" -> HS512
-        _ -> panic as "Should not be reachable"
-      }
+  let alg = case alg_string {
+    "HS256" -> Ok(HS256)
+    "HS384" -> Ok(HS384)
+    "HS512" -> Ok(HS512)
+    _ -> Error(gwt.UnexpectedAlgorithm)
+  }
+  use alg <- result.try(alg)
 
-      let sig =
-        get_signature(encoded_header <> "." <> encoded_payload, alg, secret)
-      case
-        crypto.secure_compare(
-          bit_array.from_string(sig),
-          bit_array.from_string(signature),
-        )
-      {
-        True -> {
-          Ok(gwt.dangerously_set_jwt_from_header_and_payload(header, payload))
-        }
-        False -> Error(gwt.InvalidSignature)
-      }
+  let sig = get_signature(encoded_header <> "." <> encoded_payload, alg, secret)
+  case
+    crypto.secure_compare(
+      bit_array.from_string(sig),
+      bit_array.from_string(signature),
+    )
+  {
+    True -> {
+      Ok(gwt.dangerously_set_jwt_from_header_and_payload(header, payload))
     }
-    _ -> Error(gwt.UnsupportedSigningAlgorithm)
+    False -> Error(gwt.InvalidSignature)
   }
 }
 
